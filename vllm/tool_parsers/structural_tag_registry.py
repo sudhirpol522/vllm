@@ -68,6 +68,7 @@ XGRAMMAR_BUILTIN_STRUCTURAL_TAG_MODELS = frozenset(
         "deepseek_v3_2",
         "glm_4_7",
         "deepseek_v4",
+        "gemma_4",
     }
 )
 VLLM_BUILTIN_STRUCTURAL_TAG_MODELS = frozenset({"hermes", "kimi_k3"})

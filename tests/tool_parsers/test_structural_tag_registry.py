@@ -22,6 +22,7 @@ from vllm.tool_parsers.deepseekv31_tool_parser import DeepSeekV31ToolParser
 from vllm.tool_parsers.deepseekv32_engine_tool_parser import (
     DeepSeekV32EngineToolParser,
 )
+from vllm.tool_parsers.gemma4_engine_tool_parser import Gemma4EngineToolParser
 from vllm.tool_parsers.glm47_moe_tool_parser import Glm47MoeModelToolParser
 from vllm.tool_parsers.hermes_tool_parser import Hermes2ProToolParser
 from vllm.tool_parsers.kimi_k2_tool_parser import KimiK2ToolParser
@@ -165,6 +166,75 @@ def test_hermes_required_tool_calls_use_empty_separator():
 
     assert tag is not None
     assert tag.format.separator == ""
+
+
+# ---------------------------------------------------------------------------
+# Gemma 4 structural tag
+# ---------------------------------------------------------------------------
+
+
+def _gemma4_grammar(tools):
+    tag = get_model_structural_tag(
+        model="gemma_4",
+        tools=tools,
+        tool_choice="required",
+        reasoning=False,
+    )
+    assert isinstance(tag, StructuralTag)
+    return Grammar.from_structural_tag(tag)
+
+
+def test_gemma4_declares_structural_tag_model():
+    assert Gemma4EngineToolParser.structural_tag_model == "gemma_4"
+    assert "gemma_4" in XGRAMMAR_BUILTIN_STRUCTURAL_TAG_MODELS
+
+
+def test_gemma4_required_accepts_valid_tool_call(sample_tools):
+    grammar = _gemma4_grammar(sample_tools)
+    output = '<|tool_call>call:get_weather{city:<|"|>Paris<|"|>}<tool_call|>'
+
+    assert _is_grammar_accept_string(grammar, output)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        "The weather is sunny.",
+        '<|tool_call>call:unknown{city:<|"|>Paris<|"|>}<tool_call|>',
+        "<|tool_call>call:get_weather{city:42}<tool_call|>",
+        '<|tool_call>call:get_weather{city:<|"|>Paris<|"|>',
+    ],
+)
+def test_gemma4_required_rejects_invalid_output(sample_tools, output):
+    assert not _is_grammar_accept_string(_gemma4_grammar(sample_tools), output)
+
+
+def test_gemma4_delegating_parser_applies_native_structural_tag(sample_tools):
+    class Gemma4DelegatingParser(DelegatingParser):
+        tool_parser_cls = Gemma4EngineToolParser
+
+    tokenizer = MagicMock()
+    tokenizer.get_vocab.return_value = {
+        "<|tool_call>": 1,
+        "<tool_call|>": 2,
+        '<|"|>': 3,
+        "<|channel>": 4,
+        "<channel|>": 5,
+    }
+    parser = Gemma4DelegatingParser(tokenizer, tools=sample_tools)
+    request = ChatCompletionRequest(
+        messages=[],
+        model="m",
+        tools=sample_tools,
+        tool_choice="required",
+    )
+
+    parser.adjust_request(request)
+
+    assert request.structured_outputs is not None
+    assert request.structured_outputs.structural_tag is not None
+    assert request.structured_outputs.json is None
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +466,7 @@ def test_get_model_structural_tag_supports_named_tool_choice(
         (DeepSeekV31ToolParser, "deepseek_v3_1"),
         (DeepSeekV32EngineToolParser, "deepseek_v3_2"),
         (DeepSeekV4EngineToolParser, "deepseek_v4"),
+        (Gemma4EngineToolParser, "gemma_4"),
         (Glm47MoeModelToolParser, "glm_4_7"),
         (Hermes2ProToolParser, "hermes"),
         (KimiK2ToolParser, "kimi"),
